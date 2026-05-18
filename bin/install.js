@@ -624,9 +624,11 @@ function installOpencode(ctx) {
     }
     // Preserve the original on first install only — repeat installs would
     // otherwise overwrite the only known-good copy with an already-merged file.
+    // safeBackup writes with mode 0600 from the start — fs.copyFileSync would
+    // inherit umask (typically 0644), leaking opencode.json (MCP secrets, env).
     const opencodeBak = opencodeJson + '.bak';
     if (fs.existsSync(opencodeJson) && !fs.existsSync(opencodeBak)) {
-      try { fs.copyFileSync(opencodeJson, opencodeBak); } catch (_) {}
+      SETTINGS.safeBackup(opencodeJson, opencodeBak);
     }
     if (!Array.isArray(cfg.plugin)) cfg.plugin = [];
     if (!cfg.plugin.includes(OPENCODE_PLUGIN_REL)) {
@@ -725,10 +727,12 @@ async function installHooks(ctx) {
   }
   // Backup once, preserved across reinstalls. Without the !fs.existsSync(bak)
   // guard, the second install would overwrite the only known-good copy with
-  // the already-merged file, destroying recovery.
+  // the already-merged file, destroying recovery. safeBackup writes the copy
+  // with mode 0600 from the start — fs.copyFileSync inherits umask (typically
+  // 0644), and settings.json can carry MCP server secrets and env values.
   const bak = settingsPath + '.bak';
   if (fs.existsSync(settingsPath) && !fs.existsSync(bak)) {
-    try { fs.copyFileSync(settingsPath, bak); } catch (_) {}
+    SETTINGS.safeBackup(settingsPath, bak);
   }
 
   const node = absoluteNodePath();

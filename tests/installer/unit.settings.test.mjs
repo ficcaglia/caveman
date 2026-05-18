@@ -70,6 +70,31 @@ test('writeSettings round-trips with newline', () => {
   assert.deepEqual(JSON.parse(raw), { a: 1 });
 });
 
+test('safeBackup writes destination with mode 0600', { skip: process.platform === 'win32' }, () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cm-bak-'));
+  const src = path.join(dir, 's.json');
+  const dst = path.join(dir, 's.json.bak');
+  // Write source as 0644 — the unsafe mode we used to inherit via copyFileSync.
+  fs.writeFileSync(src, '{"secret":"shh"}', { mode: 0o644 });
+  fs.chmodSync(src, 0o644);
+  // umask 022 was the trigger for the original bug — assert under it.
+  const prev = process.umask(0o022);
+  try {
+    const ok = SETTINGS.safeBackup(src, dst);
+    assert.equal(ok, true);
+    const mode = fs.statSync(dst).mode & 0o777;
+    assert.equal(mode, 0o600, `backup mode is ${mode.toString(8)}, expected 600`);
+    assert.equal(fs.readFileSync(dst, 'utf8'), '{"secret":"shh"}');
+  } finally {
+    process.umask(prev);
+  }
+});
+
+test('safeBackup returns false on missing source', () => {
+  assert.equal(SETTINGS.safeBackup('/nonexistent/source/file', '/tmp/__cm_bak_should_not_exist'), false);
+  assert.equal(fs.existsSync('/tmp/__cm_bak_should_not_exist'), false);
+});
+
 test('validateHookFields drops malformed command hook (missing command)', () => {
   const s = {
     hooks: {

@@ -93,6 +93,27 @@ function writeSettings(p, obj) {
   fs.renameSync(tmp, p);
 }
 
+// ── safeBackup ─────────────────────────────────────────────────────────────
+// Copy `src` to `dst` with mode 0600 from the start (no 0644 window).
+// fs.copyFileSync inherits umask on the destination, not source permissions,
+// so a 0600 settings.json would otherwise back up as 0644 — world-readable
+// on shared hosts, and settings.json can contain MCP server secrets and env.
+// Atomic temp + rename so a partial copy never appears at `dst`. Returns
+// true on success, false on any I/O failure.
+function safeBackup(src, dst) {
+  try {
+    const data = fs.readFileSync(src);
+    const dir = path.dirname(dst);
+    const tmp = path.join(dir, `.${path.basename(dst)}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`);
+    fs.writeFileSync(tmp, data, { mode: 0o600 });
+    try { fs.chmodSync(tmp, 0o600); } catch (_) {}
+    fs.renameSync(tmp, dst);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
 // ── validateHookFields ────────────────────────────────────────────────────
 // Claude Code uses strict Zod on settings.json — a single malformed hook
 // silently discards the entire file. Mutate-to-valid before write.
@@ -217,6 +238,7 @@ module.exports = {
   stripJsonComments,
   readSettings,
   writeSettings,
+  safeBackup,
   validateHookFields,
   hasCavemanHook,
   addCommandHook,
