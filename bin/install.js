@@ -826,15 +826,23 @@ async function runInit(ctx) {
     note(`  would download ${INIT_SCRIPT_URL} and run it on ${process.cwd()}`);
     return true;
   }
+  let tmpDir;
   try {
-    const tmp = path.join(os.tmpdir(), `caveman-init-${process.pid}.js`);
+    // mkdtempSync atomically creates a fresh directory with mode 0700, so a
+    // local attacker can't pre-plant a symlink at the destination path the way
+    // they could with a predictable PID-based filename in world-writable /tmp.
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'caveman-init-'));
+    const tmp = path.join(tmpDir, 'caveman-init.js');
     await downloadTo(INIT_SCRIPT_URL, tmp);
     const r = child_process.spawnSync(absoluteNodePath(), [tmp, ...args], { stdio: 'inherit' });
-    try { fs.unlinkSync(tmp); } catch (_) {}
     return (r.status || 0) === 0;
   } catch (e) {
     warn('  ' + e.message);
     return false;
+  } finally {
+    if (tmpDir) {
+      try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) {}
+    }
   }
 }
 
